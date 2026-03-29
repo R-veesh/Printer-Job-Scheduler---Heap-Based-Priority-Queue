@@ -70,6 +70,7 @@ class PrinterApp:
 
         self.scheduler = PrinterScheduler()
         self.printing = False
+        self.auto_print = False
 
         self._setup_styles()
         self._build_ui()
@@ -170,6 +171,11 @@ class PrinterApp:
                                      relief="flat", cursor="hand2", command=self._cancel_selected)
         self.cancel_btn.pack(fill="x", ipady=4, pady=(8, 0))
 
+        self.auto_btn = tk.Button(btn_frame, text="⏸  Auto Print: OFF", font=("Segoe UI", 10, "bold"),
+                                   bg="#7f8c8d", fg="white", activebackground="#6c7a7d",
+                                   relief="flat", cursor="hand2", command=self._toggle_auto_print)
+        self.auto_btn.pack(fill="x", ipady=4, pady=(8, 0))
+
         # ---- Right panel: tables ----
         right = tk.Frame(main, bg="#f0f2f5")
         right.pack(side="left", fill="both", expand=True)
@@ -244,6 +250,25 @@ class PrinterApp:
         self.progress = ttk.Progressbar(self.root, mode="determinate")
 
     # ----------------------------------------------------------- actions
+    def _toggle_auto_print(self):
+        self.auto_print = not self.auto_print
+        if self.auto_print:
+            self.auto_btn.config(text="▶  Auto Print: ON", bg="#8e44ad",
+                                 activebackground="#7d3c98")
+            self.status_var.set("Auto Print enabled — jobs will print automatically.")
+            self._try_auto_print()
+        else:
+            self.auto_btn.config(text="⏸  Auto Print: OFF", bg="#7f8c8d",
+                                 activebackground="#6c7a7d")
+            self.status_var.set("Auto Print disabled.")
+
+    def _try_auto_print(self):
+        """Start printing the next job if auto-print is on and printer is idle."""
+        if self.auto_print and not self.printing and not self.scheduler.queue.is_empty():
+            self.printing = True
+            self.print_btn.config(state="disabled")
+            threading.Thread(target=self._print_worker, daemon=True).start()
+
     def _browse_file(self):
         filetypes = [
             ("All Files", "*.*"),
@@ -317,6 +342,7 @@ class PrinterApp:
         self.file_path_var.set("")
 
         self._refresh_all()
+        self._try_auto_print()
 
     def _print_next(self):
         if self.printing:
@@ -357,6 +383,8 @@ class PrinterApp:
         self.root.after(0, lambda: self.print_btn.config(state="normal"))
         self.root.after(0, self._refresh_all)
         self.printing = False
+        # Auto-print next job if enabled
+        self.root.after(500, self._try_auto_print)
 
     def _cancel_selected(self):
         selected = self.queue_tree.selection()
