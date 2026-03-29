@@ -153,6 +153,18 @@ class PrinterApp:
         self.pages_entry = tk.Entry(left, font=("Segoe UI", 10), width=24)
         self.pages_entry.pack(fill="x")
 
+        tk.Label(left, text="Print Side:", font=("Segoe UI", 10),
+                 bg="#ffffff", anchor="w").pack(fill="x", pady=(8, 2))
+        self.side_var = tk.StringVar(value="Single")
+        side_frame = tk.Frame(left, bg="#ffffff")
+        side_frame.pack(fill="x", pady=2)
+        tk.Radiobutton(side_frame, text="Single-Sided", variable=self.side_var,
+                       value="Single", font=("Segoe UI", 10), bg="#ffffff",
+                       activebackground="#ffffff").pack(side="left", padx=4)
+        tk.Radiobutton(side_frame, text="Double-Sided", variable=self.side_var,
+                       value="Double", font=("Segoe UI", 10), bg="#ffffff",
+                       activebackground="#ffffff").pack(side="left", padx=4)
+
         btn_frame = tk.Frame(left, bg="#ffffff")
         btn_frame.pack(fill="x", pady=(16, 4))
 
@@ -192,17 +204,18 @@ class PrinterApp:
         queue_frame = tk.Frame(right)
         queue_frame.pack(fill="both", expand=True, pady=(4, 8))
 
-        cols = ("ID", "Document", "User", "Priority", "Pages", "Status")
+        cols = ("ID", "Document", "User", "Priority", "Pages", "Side", "Status")
         self.queue_tree = ttk.Treeview(queue_frame, columns=cols,
                                         show="headings", selectmode="browse")
         for c in cols:
             self.queue_tree.heading(c, text=c)
         self.queue_tree.column("ID", width=40, anchor="center")
-        self.queue_tree.column("Document", width=180)
-        self.queue_tree.column("User", width=120)
-        self.queue_tree.column("Priority", width=80, anchor="center")
-        self.queue_tree.column("Pages", width=55, anchor="center")
-        self.queue_tree.column("Status", width=80, anchor="center")
+        self.queue_tree.column("Document", width=170)
+        self.queue_tree.column("User", width=100)
+        self.queue_tree.column("Priority", width=70, anchor="center")
+        self.queue_tree.column("Pages", width=50, anchor="center")
+        self.queue_tree.column("Side", width=60, anchor="center")
+        self.queue_tree.column("Status", width=70, anchor="center")
 
         q_scroll = ttk.Scrollbar(queue_frame, orient="vertical",
                                   command=self.queue_tree.yview)
@@ -227,11 +240,12 @@ class PrinterApp:
         for c in cols:
             self.comp_tree.heading(c, text=c)
         self.comp_tree.column("ID", width=40, anchor="center")
-        self.comp_tree.column("Document", width=180)
-        self.comp_tree.column("User", width=120)
-        self.comp_tree.column("Priority", width=80, anchor="center")
-        self.comp_tree.column("Pages", width=55, anchor="center")
-        self.comp_tree.column("Status", width=80, anchor="center")
+        self.comp_tree.column("Document", width=170)
+        self.comp_tree.column("User", width=100)
+        self.comp_tree.column("Priority", width=70, anchor="center")
+        self.comp_tree.column("Pages", width=50, anchor="center")
+        self.comp_tree.column("Side", width=60, anchor="center")
+        self.comp_tree.column("Status", width=70, anchor="center")
 
         c_scroll = ttk.Scrollbar(comp_frame, orient="vertical",
                                   command=self.comp_tree.yview)
@@ -332,13 +346,15 @@ class PrinterApp:
             return
 
         job = self.scheduler.add_job(doc, user, priority, pages)
-        self.status_var.set(f"Job #{job.job_id} \"{job.document_name}\" added  (Priority: {job.priority})")
+        job.print_side = self.side_var.get()
+        self.status_var.set(f"Job #{job.job_id} \"{job.document_name}\" added  (Priority: {job.priority}, {job.print_side}-Sided)")
 
         # clear inputs
         self.doc_entry.delete(0, tk.END)
         self.user_entry.delete(0, tk.END)
         self.pages_entry.delete(0, tk.END)
         self.priority_var.set("Medium")
+        self.side_var.set("Single")
         self.file_path_var.set("")
 
         self._refresh_all()
@@ -363,7 +379,7 @@ class PrinterApp:
         self.root.after(0, lambda: self.progress.pack(fill="x", side="bottom", before=self.root.winfo_children()[-1]))
         self.root.after(0, lambda: self.progress.configure(maximum=total, value=0))
         self.root.after(0, lambda: self.status_var.set(
-            f"Printing Job #{job.job_id} \"{job.document_name}\"  —  page 0/{total}"))
+            f"Printing Job #{job.job_id} \"{job.document_name}\"  ({getattr(job, 'print_side', 'Single')}-Sided)  \u2014  page 0/{total}"))
         self.root.after(0, self._refresh_all)
 
         import time
@@ -371,7 +387,7 @@ class PrinterApp:
             time.sleep(0.25)
             self.root.after(0, lambda v=i: self.progress.configure(value=v))
             self.root.after(0, lambda v=i: self.status_var.set(
-                f"Printing Job #{job.job_id} \"{job.document_name}\"  —  page {v}/{total}"))
+                f"Printing Job #{job.job_id} \"{job.document_name}\"  ({getattr(job, 'print_side', 'Single')}-Sided)  \u2014  page {v}/{total}"))
 
         job.status = "Completed"
         self.scheduler.completed_jobs.append(job)
@@ -411,7 +427,9 @@ class PrinterApp:
             tag = j.priority.lower()
             self.queue_tree.insert("", "end",
                                     values=(j.job_id, j.document_name, j.user_name,
-                                            j.priority, j.pages, j.status),
+                                            j.priority, j.pages,
+                                            getattr(j, 'print_side', 'Single'),
+                                            j.status),
                                     tags=(tag,))
         self.queue_tree.tag_configure("high", background="#fadbd8")
         self.queue_tree.tag_configure("medium", background="#fdebd0")
@@ -426,7 +444,9 @@ class PrinterApp:
             tag = "done" if j.status == "Completed" else "cancelled"
             self.comp_tree.insert("", "end",
                                    values=(j.job_id, j.document_name, j.user_name,
-                                           j.priority, j.pages, j.status),
+                                           j.priority, j.pages,
+                                           getattr(j, 'print_side', 'Single'),
+                                           j.status),
                                    tags=(tag,))
         self.comp_tree.tag_configure("done", background="#d4efdf")
         self.comp_tree.tag_configure("cancelled", background="#f5b7b1")
