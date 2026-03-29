@@ -2,8 +2,62 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
 import os
+import getpass
+import math
 
 from printer_scheduler import PrinterScheduler
+
+
+def count_pages(filepath):
+    """Detect page count from a file. Returns (pages, method_description)."""
+    ext = os.path.splitext(filepath)[1].lower()
+
+    try:
+        if ext == ".pdf":
+            from PyPDF2 import PdfReader
+            reader = PdfReader(filepath)
+            pages = len(reader.pages)
+            return pages, "PDF pages detected"
+
+        elif ext in (".docx",):
+            from docx import Document
+            doc = Document(filepath)
+            # Estimate: ~250 words per page
+            text = " ".join(p.text for p in doc.paragraphs)
+            word_count = len(text.split())
+            pages = max(1, math.ceil(word_count / 250))
+            return pages, f"Estimated from {word_count} words"
+
+        elif ext in (".xlsx", ".xls"):
+            from openpyxl import load_workbook
+            wb = load_workbook(filepath, read_only=True)
+            pages = len(wb.sheetnames)
+            wb.close()
+            return pages, f"{pages} sheet(s) detected"
+
+        elif ext == ".csv":
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                line_count = sum(1 for _ in f)
+            pages = max(1, math.ceil(line_count / 50))  # ~50 rows per page
+            return pages, f"Estimated from {line_count} rows"
+
+        elif ext == ".txt":
+            with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+                line_count = sum(1 for _ in f)
+            pages = max(1, math.ceil(line_count / 55))  # ~55 lines per page
+            return pages, f"Estimated from {line_count} lines"
+
+        elif ext in (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tiff"):
+            return 1, "Image = 1 page"
+
+        else:
+            # Fallback: estimate by file size (~3 KB per page)
+            size_kb = os.path.getsize(filepath) / 1024
+            pages = max(1, math.ceil(size_kb / 3))
+            return pages, f"Estimated from file size ({size_kb:.0f} KB)"
+
+    except Exception as e:
+        return None, str(e)
 
 
 class PrinterApp:
@@ -208,7 +262,29 @@ class PrinterApp:
             self.doc_entry.delete(0, tk.END)
             self.doc_entry.insert(0, filename)
             self.file_path_var.set(path)
-            self.status_var.set(f"File selected: {filename}")
+
+            # Auto-detect page count
+            pages, info = count_pages(path)
+            if pages is not None:
+                self.pages_entry.delete(0, tk.END)
+                self.pages_entry.insert(0, str(pages))
+                self.status_var.set(f"File: {filename}  |  Pages: {pages} ({info})")
+            else:
+                self.status_var.set(f"File: {filename}  |  Could not detect pages: {info}")
+
+            # Auto-fill user name from OS if empty
+            if not self.user_entry.get().strip():
+                self.user_entry.delete(0, tk.END)
+                self.user_entry.insert(0, getpass.getuser())
+
+            # Auto-suggest priority based on file type
+            ext = os.path.splitext(filename)[1].lower()
+            if ext == ".pdf":
+                self.priority_var.set("High")
+            elif ext in (".docx", ".doc", ".xlsx", ".xls", ".csv"):
+                self.priority_var.set("Medium")
+            elif ext in (".txt", ".png", ".jpg", ".jpeg", ".bmp", ".gif"):
+                self.priority_var.set("Low")
 
     def _add_job(self):
         doc = self.doc_entry.get().strip()
