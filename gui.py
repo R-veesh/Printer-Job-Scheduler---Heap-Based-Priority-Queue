@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import threading
+import os
 
 from printer_scheduler import PrinterScheduler
 
@@ -58,16 +59,29 @@ class PrinterApp:
                               bg="#ffffff", padx=14, pady=10)
         left.pack(side="left", fill="y", padx=(0, 8))
 
-        fields = [
-            ("Document Name:", "doc_entry"),
-            ("User Name:", "user_entry"),
-        ]
-        for label_text, attr in fields:
-            tk.Label(left, text=label_text, font=("Segoe UI", 10),
-                     bg="#ffffff", anchor="w").pack(fill="x", pady=(8, 2))
-            entry = tk.Entry(left, font=("Segoe UI", 10), width=24)
-            entry.pack(fill="x")
-            setattr(self, attr, entry)
+        # -- Document Name + Browse --
+        tk.Label(left, text="Document Name:", font=("Segoe UI", 10),
+                 bg="#ffffff", anchor="w").pack(fill="x", pady=(8, 2))
+        doc_row = tk.Frame(left, bg="#ffffff")
+        doc_row.pack(fill="x")
+        self.doc_entry = tk.Entry(doc_row, font=("Segoe UI", 10), width=16)
+        self.doc_entry.pack(side="left", fill="x", expand=True)
+        self.browse_btn = tk.Button(doc_row, text="📂 Browse", font=("Segoe UI", 9),
+                                     bg="#7f8c8d", fg="white", relief="flat",
+                                     cursor="hand2", command=self._browse_file)
+        self.browse_btn.pack(side="left", padx=(4, 0), ipady=1)
+
+        self.file_path_var = tk.StringVar(value="")
+        self.file_path_label = tk.Label(left, textvariable=self.file_path_var,
+                                         font=("Segoe UI", 8), bg="#ffffff",
+                                         fg="#7f8c8d", anchor="w", wraplength=220)
+        self.file_path_label.pack(fill="x")
+
+        # -- User Name --
+        tk.Label(left, text="User Name:", font=("Segoe UI", 10),
+                 bg="#ffffff", anchor="w").pack(fill="x", pady=(8, 2))
+        self.user_entry = tk.Entry(left, font=("Segoe UI", 10), width=24)
+        self.user_entry.pack(fill="x")
 
         tk.Label(left, text="Priority:", font=("Segoe UI", 10),
                  bg="#ffffff", anchor="w").pack(fill="x", pady=(8, 2))
@@ -176,6 +190,26 @@ class PrinterApp:
         self.progress = ttk.Progressbar(self.root, mode="determinate")
 
     # ----------------------------------------------------------- actions
+    def _browse_file(self):
+        filetypes = [
+            ("All Files", "*.*"),
+            ("PDF Files", "*.pdf"),
+            ("Word Documents", "*.doc *.docx"),
+            ("Text Files", "*.txt"),
+            ("Images", "*.png *.jpg *.jpeg *.bmp"),
+            ("Spreadsheets", "*.xls *.xlsx *.csv"),
+        ]
+        path = filedialog.askopenfilename(
+            title="Select a Document to Print",
+            filetypes=filetypes,
+        )
+        if path:
+            filename = os.path.basename(path)
+            self.doc_entry.delete(0, tk.END)
+            self.doc_entry.insert(0, filename)
+            self.file_path_var.set(path)
+            self.status_var.set(f"File selected: {filename}")
+
     def _add_job(self):
         doc = self.doc_entry.get().strip()
         user = self.user_entry.get().strip()
@@ -204,6 +238,7 @@ class PrinterApp:
         self.user_entry.delete(0, tk.END)
         self.pages_entry.delete(0, tk.END)
         self.priority_var.set("Medium")
+        self.file_path_var.set("")
 
         self._refresh_all()
 
